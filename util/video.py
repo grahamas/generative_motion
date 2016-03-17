@@ -35,7 +35,23 @@ def RGB_to_grayscale(frame):
 def grayscale_to_RGB(frame):
     return cv2.cvtColor(frame, cv2.COLOR_GRAY2RGB)
 
-def binary_bytearray(frame):
-    b_frame = frame > 0
-    b_frame = np.packbits(b_frame)
-    return b_frame
+def frame_byte_string(frame):
+    # Note that TensorFlow supports maximum unsigned integer
+    # bit length of 16, which is what drove this choice
+    EXPECTED_SIZE = (512, 512)
+    INT_LENGTH = 16
+    b_frame = np.array(frame > 0, dtype=uint16)
+    # TODO: Generalize assertion
+    size = np.size(frame)
+    assert size == EXPECTED_SIZE
+    height, width = size
+    assert np.mod(width, INT_LENGTH) == 0
+    cols = np.divide(width, INT_LENGTH)
+    pows = array([32768, 16384,  8192,  4096,  2048,  1024,   512,   256,   128,
+              64,    32,    16,     8,     4,     2,     1], dtype=uint16)
+    print "HELLO"
+    #out = np.zeros((height, cols), dtype=uint16)
+    split = np.hsplit(frame, cols)
+    out = np.linalg.matmul(split, pows)#, out)
+    return out.tostring()
+
