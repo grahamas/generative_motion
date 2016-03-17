@@ -16,7 +16,7 @@ import theano
 
 import matplotlib.pyplot as plt
 
-from stream import Stream
+import stream
 
 FLOAT_STR = 'float64'
 theano.config.floatX = FLOAT_STR
@@ -85,7 +85,7 @@ class MovieCollection(object):
 
 
 
-class MovieStream(Stream):
+class MovieStream(stream.FileStream):
     """
         Streams a movie from a VideoCapture.
         Does not hold movie; IS ITERATOR.
@@ -109,25 +109,16 @@ class MovieStream(Stream):
         # Get the number of movie frames and make sure it is 
         # commensurate with the requested n_frames and drop_frames
         # NOTE: Currently this doesn't work on midway (using old OpenCV)
-        #total_n_frames = int(self._cap.get(cv2.cv.CV_CAP_PROP_FRAME_COUNT))
-        # assert total_n_frames >= n_frames + drop_frames, 
-        #     "{} < {} + {}".format(total_n_frames, 
-        #     n_frames, drop_frames)
-        self._drop_frames = drop_frames
+        total_n_frames = int(self._cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        assert total_n_frames >= max_len + skip_len, 
+             "{} < {} + {}".format(total_n_frames, 
+             max_len, skip_len)
         # Get the movie dimensions
-        #self.width  = int(self._cap.get(cv2.cv.CV_CAP_PROP_FRAME_WIDTH))
-        #self.height = int(self._cap.get(cv2.cv.CV_CAP_PROP_FRAME_HEIGHT))
-        #self.fps    = self._cap.get(cv2.cv.CV_CAP_PROP_FPS)
-        self.width = self._cap.width
-        self.height = self._cap.height
-        self.fps = self._cap.info['streams'][0]['avg_frame_rate']
-        #if fps > 0:
-        #    if self.fps > 0:
-        #        assert self.fps == fps
-        #    else:
-        #        self.fps = fps
-        #else:
-        #    assert self.fps > 0
+        self.width  = int(self._cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.height = int(self._cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        self.fps    = self._cap.get(cv2.CAP_PROP_FPS)
+        if fps:
+            assert self.fps == fps
         self._close_cap()
         if n_frames == 0:
             self.n_frames = sys.maxint - self._drop_frames
@@ -140,18 +131,7 @@ class MovieStream(Stream):
     @classmethod
     def from_args(cls, args):
         return cls(args['fn'])
-    # Methods for iteration
-    def __iter__(self):
-        """
-            Initializes self as iterator by skipping dropped frames.
-        """
-        if not self._open_cap():
-            raise Exception
-        self.i_frame = 0
-        while self.i_frame < self._drop_frames:
-            ret = self._cap.grab()
-            self.i_frame += 1
-        return self
+
     def next(self):
         """
             Iterates while cap remains opened and we haven't advanced beyond n_frames.
@@ -168,49 +148,33 @@ class MovieStream(Stream):
             self._close_cap()
             raise StopIteration
 
-    def fill_array(self, arr, n_frames=0, frame_processing=[]):
+    def __enter__(self):
         """
-            Fills arr with movie frames (or n_frames many),
-            ASSUMES ALREADY ITERATING
-            TODO: Maybe add start frame
-        """
-        assert n_frames <= arr.shape[0] 
-        n_frames = min(n_frames, arr.shape[0])
-        # Size assertions do not hold dependent on processing.
-        #assert len(arr_shape) == 3
-        #assert arr_shape[1] == self.height
-        #assert arr_shape[2] == self.width
-        ##### THIS IS AWFUL ######
-        self.__iter__()
-        ##########################
-        
-        for i_arr in range(n_frames):
-            try:
-                arr[i_arr] = reduce(lambda x,f: f(x), frame_processing, self.next())
-            except StopIteration:
-                self._close_cap()
-                return i_arr
-        return i_arr
-
-    def _open_cap(self):
-        """
-            A probably unnecessary helper function to open
+            Helper function to open
             the movie file and do basic error handling to
             check that it was opened.
         """
-        if not self._cap:
-            cap = VideoCapture(os.path.realpath(self.file_path))
-            if not cap.isOpened():
-                raise ValueError("Cannot open movie file path.")
-            self._cap = cap
-            return True
-        else:
-            return False
+        class MovieSource(stream.FileSource):
+            def __init__(self, file_path, max_len, skip_len):
+                self.file_path = file_path
+                self.max_len = max_len
+                self.skip_len = skip_len
+                cap = VideoCapture(os.path.realpath(self.file_path))
+                if not cap.isOpened():
+                    raise ValueError("Cannot open movie file path.")
+                cap.skip_to_frame(0) # Skips initially skipped frames (skip_len)
+                self.cap = cap
+            def close_file(self):
+                if self.cap:
+                    self.cap.release()
+            def skip_to_frame(self, i_frame):
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, i_frame + self.skip_len)
+        self.source = MovieSource(self.file_path)
+    def __exit__(self):
+        self.source.close_file()
 
-    def _close_cap(self):
-        if self._cap:
-            self._cap.release()
-            self._cap = None
+    def next(self):
+
 
     def play(self, window_name='frame'):
         """
@@ -219,8 +183,7 @@ class MovieStream(Stream):
         frame_len = int(1000.0 / self.fps)
         for frame in self:
             print frame
-            skio.imshow(window_name, np.array(np.squeeze(frame), dtype=np.uint8))
-            skio.show()
+            cv2.imshow(window_name, np.array(np.squeeze(frame), dtype=np.uint8))
             if cv2.waitKey(frame_len) & 0xFF == ord('q'):
                 break
         cv2.destroyWindow(window_name)
