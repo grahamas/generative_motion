@@ -1,5 +1,7 @@
 import os,sys
 
+from future_builtins import zip
+
 from abc import ABCMeta, abstractmethod
 
 import random
@@ -23,15 +25,15 @@ theano.config.floatX = FLOAT_STR
 np_floatX = np.dtype(FLOAT_STR)
 
 class Stream(object):
-    __metaclass__ = ABCMeta
     """
         Streams data
-        Does not hold data; IS ITERATOR.
+        Does not hold data; IS NOT ITERATOR.
+        Does iterate.
     """
     def __init__(self, source, max_len=None,
         skip_len=0, on_load=[]):
         """
-            source          : stream's source
+            source          : stream's source (typically another stream)
             max_len         : (default=None) maximum number of stream units to load
             skip_len        : (default=0) the number of initial units to skip
             on_load         : (default=[]) list of processing functions to apply to 
@@ -41,37 +43,190 @@ class Stream(object):
         self.max_len = max_len
         self.skip_len = skip_len
         self.on_load = on_load
+        self.i_unit = 0
 
-    def write(self, file_name, on_write=[], mode='wb'):
+    def write(self, file_name, mode, on_write=[]):
         with open(file_name, mode) as out_file:
-            for unit in self:
+            unit = self.next()
+            while unit is not None
                 out_file.write(reduce(lambda x,f: f(x), on_write, unit))
-
+                unit = self.next()
     def next(self):
         """
             Returns next unit.
         """
-        return reduce(lambda x,f: f(x), self.on_load, source())
-    @abstractmethod
-    def batch(self, batch_size, stride):
+        if self.i_unit < self.max_len:
+            return reduce(lambda x,f: f(x), self.on_load, self.source.next())
+        else:
+            return None
+    def skip(self):
+        self.source.skip()
+    def batch(self, batch_size, stride=None, max_len=None,
+            skip_len=0, on_load=[]):
         """
             Returns stream whose units are batches.
         """
-        pass
-    @abstractmethod
-    def map(self, functions, arr=None):
+        return BatchStream(self, batch_size, stride=stride,
+                max_len=max_len, skip_len=skip_len, on_load=on_load)
+    def map(self, functions, arr=None, stride=None,
+            max_len=None, skip_len=0):
         """
             Returns stream whose units are map output.
         """
-        pass
-    @abstractmethod
-    def reduce(self, function, arr=None):
+        if isinstance(functions, list):
+            return Stream(self, max_len=max_len,
+                    skip_len=skip_len, on_load=functions)
+        else:
+            return Stream(self, max_len=max_len,
+                    skip_len=skip_len, on_load=[functions])
+    def reduce(self, function, init_value=None):
         """
             Returns output of reduction.
         """
-        pass
+        if init_value:
+            left = init_value
+        else:
+            left = self.next()
+        right = self.next()
+        while right is not None:
+            left = function(left, right)
+            right = self.next()
+        return left 
+    def next_n(self, n):
+        return [self.next() for i in range(n)]
+    def skip_n(self,n):
+        """
+            Skips ahead n units, sending logic down the line.
+        """
+        self.source.skip_n(n)
+
+class StreamCollection(object):
+    """
+        A collection of streams. We assume we start with the sources.
+    """
+    def __init__(self, stream_collection, on_load=[]):
+        self.stream_collection = stream_collection
+    def __len__(self):
+        return len(self.stream_collection)
+    def next(self):
+        return [reduce(lambda x,f: f(x), self.on_load, stream) for stream in self.stream_collection.next()]
+    def skip(self):
+        self.stream_collection.skip()
+    def next_n(self, n):
+        """
+            Gets list of lists of next n from each stream,
+            and applies on_load functions to each unit.
+
+            Necessary implmentation for batching.
+        """
+        return [[reduce(lambda x,f: f(x), self.on_load, unit) for unit in stream_n_units]
+                for stream_n_units in self.stream_collection.next()]
+    def skip_n(self):
+        self.stream_collection.skip_n()
+    def batch(self, batch_size, stride=None, max_len=None,
+            skip_len=0, on_load=[]):
+        return 
+    def map(self, functions, stride=None,
+            max_len=None, skip_len=0):
+        """
+            Maps functions to all streams independently.
+            Works by returning a new StreamCollection with the
+            functions as the on_load in the new Collection,
+            and self as the source_collection of the returned
+            object.
+
+            Returns new StreamCollection.
+        """
+        if isinstance(functions, list):
+            return StreamCollection(self, max_len=max_len,
+                    skip_len=skip_len, on_load=functions)
+        else:
+            return StreamCollection(self, max_len=max_len,
+                    skip_len=skip_len, on_load=[functions])
+    def reduce(self, function, init_values=None):
+        """
+            Independently reduces all streams (folding from left, obviously).
+
+            Returns list of results.
+        """
+        if init_values:
+            if isinstance(init_values, list):
+                lefts = init_values
+            else:
+                lefts = [init_values] * len(self.stream_collection)
+        else:
+            lefts = self.next()
+        rights = self.next()
+        while not all(rights is None):
+            valid = not rights is None
+            args = zip(lefts[valid], rights[valid])
+            lefts = map(lambda arg: function(*arg), args)
+            rights = self.next()
+    def join(self, function, max_len=None,
+            skip_len=0):
+        """
+            Joins all streams in the collection into a single stream.
+            Takes a function that takes a list of units and returns 
+            a unit (no necessary relation between in and out units).
+
+            Returns new Stream.
+        """
+        return Stream(self, on_load=[function])
+
+
+class BatchStream(Stream):
+    def __init__(self, source, batch_size, 
+            stride=None,
+            max_len=None,
+            skip_len=0, on_load=[]):
+        # Notice that super call MUST follow self.next assignment,
+        # in case skip function is called. (??? No that's wrong)
+        if stride and not stride == batch_size: 
+            assert stride < batch_size
+            self.stride = stride
+            self.next = self.uninitialized_next
+        else:
+            self.next = self.simple_next
+        super(BatchStream, self).__init__(source, max_len, skip_len, on_load)
+        self.batch_size = batch_size
+    def uninitialized_next(self):
+        """
+            Initializes the on_hand buffer, and returns the first batch.
+        """
+        self.on_hand = self.source.next_n(batch_size)
+        self.current_start = 0
+        self.next = self.initialized_next
+        return self.on_hand.copy()
+    def initialized_next(self):
+        """
+            Now that the buffer has been initialized, just gets next
+            stride's worth of units from source. Uses effectively circular
+            array for storage.
+        """
+        next_start = (self.current_start + self.stride) % buffer_size
+        if next_start > self.current_start:
+            self.on_hand[self.current_start:next_start] = self.source.next_n(self.stride)
+        else:
+            self.on_hand[self.current_start:] = self.source.next_n(batch_size - self.current_start)
+            if next_start > 0:
+                self.on_hand[:next_start] = self.source.next_n(next_start)
+        return self.on_hand[self.current_start:] + self.on_hand[:self.current_start]
+    def simple_next(self):
+        """
+            In the case that the batches don't overlap.
+        """
+        return reduce(lambda x, f: f(x), self.on_load, self.source.next_n(batch_size)) 
 
 class FileStream(Stream):
+    """
+        Abstract class for implementing base stream from a file
+        Needs to be abstract as the method of file opening is different.
+
+        In implementing, subclass FileSource in a class defined in the __enter__
+        method. This subclass should define all the low level methods of interacting
+        with the file. Then the __enter__ method returns an instance of the FileSource
+        subclass, and the __exit__ method cleans up.
+    """
     __metaclass__ = ABCMeta
     def __init__(self, file_name, max_len=None,
             skip_len=0, on_load=[]):
@@ -84,8 +239,7 @@ class FileStream(Stream):
         """
         self.file_name = file_name
         super(FileStream, self).__init__(None, max_len,
-                skip_len, on_load)
-    
+                skip_len, on_load) 
     @abstractmethod
     def __enter__(self):
         pass
@@ -93,11 +247,45 @@ class FileStream(Stream):
     def __exit__(self):
         pass
 
+class FileStreamCollection(StreamCollection):
+    """
+        Collection of FileStreams
+        Implements "with" logic (returns list of opened sources)
+    """
+    def __len__(self):
+        return len(self.sources)
+    def next(self):
+        return [reduce(lambda x,f: f(x), self.on_load, stream) for stream in self.streams]
+    def skip(self):
+        pass
+    def map(self, functions
+    def __enter__(self):
+        self.sources = [stream.__enter__() for stream in self.streams]
+        return self.sources
+    def __exit__(self):
+        [source.__exit__() for source in self.sources]
+
 class FileSource(object):
+    """
+        Abstract class for implementing lowest level interaction with file.
+        For safety, this class should only be instantiated within a "with"
+        block, so all subclass definitions should appear in the __enter__
+        method of a subclass of the FileStream class.
+    """
     __metaclass__ = ABCMeta
     @abstractmethod
     def next(self):
         pass
+    def next_n(self,n):
+        "Naive implementation, for convenience."
+        return [self.next() for i in range(n)]
+    @abstractmethod
+    def skip(self):
+        pass
+    def skip_n(self,n):
+        "Naive implementation, for convenience."
+        for i in range(n):
+            self.skip()
     @abstractmethod
     def close_file(self):
         pass

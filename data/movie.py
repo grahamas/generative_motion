@@ -83,8 +83,6 @@ class MovieCollection(object):
             movie_nums += i_rand_movie
         return np.vstack([movie_nums,movie_ends])
 
-
-
 class MovieStream(stream.FileStream):
     """
         Streams a movie from a VideoCapture.
@@ -102,7 +100,6 @@ class MovieStream(stream.FileStream):
             grayscale       : (default=True) must specify for loading+saving
         """
         super(MovieStream, self).__init__(file_path, max_len, skip_len, on_load)
-        
         # We open the file to get metadata
         self._cap = None
         self._open_cap()
@@ -131,7 +128,6 @@ class MovieStream(stream.FileStream):
     @classmethod
     def from_args(cls, args):
         return cls(args['fn'])
-
     def next(self):
         """
             Iterates while cap remains opened and we haven't advanced beyond n_frames.
@@ -147,12 +143,12 @@ class MovieStream(stream.FileStream):
         else:
             self._close_cap()
             raise StopIteration
-
     def __enter__(self):
         """
-            Helper function to open
-            the movie file and do basic error handling to
-            check that it was opened.
+            Defines and instantiates MovieSource subclass of FileSource
+            on entrance into "with" context manager.
+
+            Allows ensured clean-up by __exit__
         """
         class MovieSource(stream.FileSource):
             def __init__(self, file_path, max_len, skip_len):
@@ -163,32 +159,42 @@ class MovieStream(stream.FileStream):
                 if not cap.isOpened():
                     raise ValueError("Cannot open movie file path.")
                 cap.skip_to_frame(0) # Skips initially skipped frames (skip_len)
+                self.i_frame = 0
                 self.cap = cap
             def close_file(self):
                 if self.cap:
                     self.cap.release()
+                    self.i_frame = None
+            def skip(self):
+                self.skip_to_frame(self.i_frame + 1)
+            def skip_n(self, n):
+                self.skip_to_frame(self.i_frame + n)
             def skip_to_frame(self, i_frame):
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, i_frame + self.skip_len)
+                self.i_frame = i_frame
+            def next(self):
+                if self.cap.isOpened() and ((not self.max_len) or (self.i_frame < self.max_len)):
+                    return self.cap.read()
+                else:
+                    return None
         self.source = MovieSource(self.file_path)
+        return self.source
     def __exit__(self):
         self.source.close_file()
-
-    def next(self):
-
-
     def play(self, window_name='frame'):
         """
             Play the movie using OpenCV.
         """
         frame_len = int(1000.0 / self.fps)
-        for frame in self:
-            print frame
-            cv2.imshow(window_name, np.array(np.squeeze(frame), dtype=np.uint8))
-            if cv2.waitKey(frame_len) & 0xFF == ord('q'):
-                break
+        with self as stream:
+            frame = stream.next()
+            while frame is not None:
+                cv2.imshow(window_name, np.array(np.squeeze(frame), dtype=np.uint8))
+                if cv2.waitKey(frame_len) & 0xFF == ord('q'):
+                    break
+                frame = stream.next()
         cv2.destroyWindow(window_name)
         cv2.waitKey(1)
-
     def save(self, file_name):
         """
             Save the movie to file_name as XVID avi
@@ -203,7 +209,6 @@ class MovieStream(stream.FileStream):
                 frame = vu.grayscale_to_RGB(frame)
             writer.write(frame)
         writer.release()
-    
     def average_luminance(self):
         """
             Return array of average frame luminances.
