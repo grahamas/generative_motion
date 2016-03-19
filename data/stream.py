@@ -193,25 +193,17 @@ class BatchStream(Stream):
         """
             Initializes the on_hand buffer, and returns the first batch.
         """
-        self.on_hand = self.source.next_n(batch_size)
-        self.current_start = 0
+        self.circ_array = CircularArray(self.source.next_n(self.batch_size))
         self.next = self.initialized_next
-        return self.on_hand.copy()
+        return reduce(lambda x,f: f(x), self.on_load, self.circ_array.get())
     def initialized_next(self):
         """
             Now that the buffer has been initialized, just gets next
             stride's worth of units from source. Uses effectively circular
             array for storage.
         """
-        next_start = (self.current_start + self.stride) % buffer_size
-        if next_start > self.current_start:
-            self.on_hand[self.current_start:next_start] = self.source.next_n(self.stride)
-        else:
-            self.on_hand[self.current_start:] = self.source.next_n(batch_size - self.current_start)
-            if next_start > 0:
-                self.on_hand[:next_start] = self.source.next_n(next_start)
-        self.current_start = next_start
-        return self.on_hand[self.current_start:] + self.on_hand[:self.current_start]
+        self.circ_array.append(self.source.next_n(self.stride))
+        return reduce(lambda x,f: f(x), self.on_load, self.circ_array.get())
     def simple_next(self):
         """
             In the case that the batches don't overlap.
@@ -232,11 +224,14 @@ class BatchStreamCollection(StreamCollection):
         super(BatchStreamCollection, self).__init__(stream_collection, max_len, skip_len, on_load)
         self.batch_size = batch_size
     def uninitialized_next(self):
-        pass
+        self.l_circ_array = [CircularArray(source.next_n(self.batch_size)) for source in self.stream_collection]
+        self.next = self.initialized_next
+        return [reduce(lambda x,f: f(x), self.on_load, ca.get()) for ca in self.l_circ_array]
     def initialized_next(self):
-        pass
+        (ca.append(source.next_n(self.stride)) for ca,source in zip(self.l_circ_array,self.stream_collection))
+        return [reduce(lambda x,f: f(x), self.on_load, ca.get()) for ca in self.l_circ_array]
     def simple_next(self):
-        pass
+        return [reduce(lambda x,f: f(x), self.on_load, source.next_n(batch_size)) for source in self.stream_collection]
 
 
 class FileStream(Stream):
