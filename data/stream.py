@@ -182,7 +182,7 @@ class BatchStream(Stream):
         # Notice that super call MUST follow self.next assignment,
         # in case skip function is called. (??? No that's wrong)
         if stride and not stride == batch_size: 
-            assert stride < batch_size
+            assert stride < batch_size and stride > 0
             self.stride = stride
             self.next = self.uninitialized_next
         else:
@@ -210,12 +210,34 @@ class BatchStream(Stream):
             self.on_hand[self.current_start:] = self.source.next_n(batch_size - self.current_start)
             if next_start > 0:
                 self.on_hand[:next_start] = self.source.next_n(next_start)
+        self.current_start = next_start
         return self.on_hand[self.current_start:] + self.on_hand[:self.current_start]
     def simple_next(self):
         """
             In the case that the batches don't overlap.
         """
         return reduce(lambda x, f: f(x), self.on_load, self.source.next_n(batch_size)) 
+
+class BatchStreamCollection(StreamCollection):
+    def __init__(self, stream_collection, batch_size,
+            stride=None,
+            max_len=None,
+            skip_len=0, on_load=[]):
+        if stride and not stride == batch_size:
+            assert stride < batch_size and stride > 0
+            self.stride = stride
+            self.next = self.uninitialized_next
+        else:
+            self.next = self.simple
+        super(BatchStreamCollection, self).__init__(stream_collection, max_len, skip_len, on_load)
+        self.batch_size = batch_size
+    def uninitialized_next(self):
+        pass
+    def initialized_next(self):
+        pass
+    def simple_next(self):
+        pass
+
 
 class FileStream(Stream):
     """
