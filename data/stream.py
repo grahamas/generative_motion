@@ -7,22 +7,6 @@ from abc import ABCMeta, abstractmethod
 import random
 
 import numpy as np
-from scipy import signal
-
-import json
-import video as vu
-#import cv2
-from skvideo.io import VideoCapture, VideoWriter
-#from cv2 import VideoCapture, VideoWriter
-import skimage.io as skio
-
-import theano
-
-import matplotlib.pyplot as plt
-
-FLOAT_STR = 'float64'
-theano.config.floatX = FLOAT_STR
-np_floatX = np.dtype(FLOAT_STR)
 
 class Stream(object):
     """
@@ -48,15 +32,20 @@ class Stream(object):
     def write(self, file_name, mode, on_write=[]):
         with open(file_name, mode) as out_file:
             unit = self.next()
-            while unit is not None
+            while unit is not None:
                 out_file.write(reduce(lambda x,f: f(x), on_write, unit))
                 unit = self.next()
     def next(self):
         """
             Returns next unit.
         """
-        if self.i_unit < self.max_len:
-            return reduce(lambda x,f: f(x), self.on_load, self.source.next())
+        if (not self.max_len) or self.i_unit < self.max_len:
+            try:
+                self.i_unit += 1 # Probably bad idea, since StopIteration could be sent,
+                                 # but i_unit would continue incrementing.
+                return reduce(lambda x,f: f(x), self.on_load, self.source.next())
+            except StopIteration:
+                return None
         else:
             return None
     def skip(self):
@@ -99,6 +88,15 @@ class Stream(object):
             Skips ahead n units, sending logic down the line.
         """
         self.source.skip_n(n)
+    def to_list(self):
+        ret_list = []
+        next_unit = self.next()
+        print next_unit
+        while next_unit is not None:
+            ret_list += [next_unit]
+            next_unit = self.next()
+        return ret_list
+
 
 class StreamCollection(object):
     """
@@ -275,7 +273,8 @@ class FileStreamCollection(StreamCollection):
         return [reduce(lambda x,f: f(x), self.on_load, stream) for stream in self.streams]
     def skip(self):
         pass
-    def map(self, functions
+    # TODO
+    #def map(self, functions
     def __enter__(self):
         self.sources = [stream.__enter__() for stream in self.streams]
         return self.sources
