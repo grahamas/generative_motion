@@ -27,6 +27,7 @@ class Stream(object):
         self.max_len = max_len
         self.skip_len = skip_len
         self.on_load = on_load
+        self.skip_n(self.skip_len)
         self.i_unit = 0
 
     def write(self, file_name, mode, on_write=[]):
@@ -49,7 +50,10 @@ class Stream(object):
         else:
             return None
     def skip(self):
-        self.source.skip()
+        if isinstance(self.source, Stream):
+            self.source.skip()
+        else:
+            self.source.next()
     def batch(self, batch_size, stride=None, max_len=None,
             skip_len=0, on_load=[]):
         """
@@ -87,11 +91,14 @@ class Stream(object):
         """
             Skips ahead n units, sending logic down the line.
         """
-        self.source.skip_n(n)
+        if isinstance(self.source, Stream):
+            self.source.skip_n(n)
+        else:
+            for i in range(n):
+                self.source.next()
     def to_list(self):
         ret_list = []
         next_unit = self.next()
-        print next_unit
         while next_unit is not None:
             ret_list += [next_unit]
             next_unit = self.next()
