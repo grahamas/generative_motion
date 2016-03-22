@@ -11,6 +11,10 @@ from util.circ_array import CircularArray
 
 import numpy as np
 
+# Less than a week after writing this (well, I finished today)
+# I have the sneaking feeling that generator expressions have the
+# same effect.
+
 class Stream(object):
     """
         Streams data
@@ -266,16 +270,16 @@ class FileStream(Stream):
         subclass, and the __exit__ method cleans up.
     """
     __metaclass__ = ABCMeta
-    def __init__(self, file_name, max_len=None,
+    def __init__(self, file_path, max_len=None,
             skip_len=0, on_load=[]):
         """
-            file_name       : path to data file
+            file_path       : path to data file
             max_len         : (default=None) maximum number of stream units to load
             skip_len        : (default=0) the number of initial units to skip
             on_load         : (default=[]) list of processing functions to apply to 
                                 each unit when loaded
         """
-        self.file_name = file_name
+        self.file_path = file_path
         super(FileStream, self).__init__(None, max_len,
                 skip_len, on_load) 
     @abstractmethod
