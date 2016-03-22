@@ -60,6 +60,7 @@ class TestStream(unittest.TestCase):
         self.assertIsNone(long_batch_stream.next())
 
     def test_map(self):
+        # TODO: More test cases
         simple_stream = Stream(iter(self.simple_list))
         map_fn = lambda x: x + 30
         mapped_list = map(map_fn, self.simple_list)
@@ -79,6 +80,13 @@ class TestStream(unittest.TestCase):
         mapped_stream10 = simple_stream.map(map_fns[::-1])
         self.assertEqual(mapped10, mapped_stream10.to_list())
 
+    def test_reduce(self):
+        # TODO: More test cases
+        simple_stream = Stream(iter(self.simple_list))
+        list_sum = reduce(lambda x,y: x+y, self.simple_list)
+        self.assertEqual(list_sum, simple_stream.reduce(lambda x,y: x+y))
+
+    
 
 
 class TestBatchStream(unittest.TestCase):
