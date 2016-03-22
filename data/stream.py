@@ -1,10 +1,13 @@
 import os,sys
+sys.path.insert(1, os.path.join(sys.path[0], '..'))
 
 from future_builtins import zip
 
 from abc import ABCMeta, abstractmethod
 
 import random
+
+from util.circ_array import CircularArray
 
 import numpy as np
 
@@ -200,7 +203,7 @@ class BatchStream(Stream):
         """
         self.circ_array = CircularArray(self.source.next_n(self.batch_size))
         self.next = self.initialized_next
-        return reduce(lambda x,f: f(x), self.on_load, self.circ_array.get())
+        return self.apply(self.circ_array.get())
     def initialized_next(self):
         """
             Now that the buffer has been initialized, just gets next
@@ -208,12 +211,25 @@ class BatchStream(Stream):
             array for storage.
         """
         self.circ_array.append(self.source.next_n(self.stride))
-        return reduce(lambda x,f: f(x), self.on_load, self.circ_array.get())
+        return self.apply(self.circ_array.get())
     def simple_next(self):
         """
             In the case that the batches don't overlap.
         """
-        return reduce(lambda x, f: f(x), self.on_load, self.source.next_n(batch_size)) 
+        return self.apply(self.source.next_n(self.batch_size)) 
+    def apply(self, retval):
+        """
+            A helper function to apply on_load and check for None value.
+
+            Possibly unnecessary, but eliminates code repetition.
+        """
+        if retval is None:
+            return None
+        retval = reduce(lambda x, f: f(x), self.on_load, retval)
+        if not any(val is None for val in retval):
+            return retval
+        else:
+            return None
 
 class BatchStreamCollection(StreamCollection):
     def __init__(self, stream_collection, batch_size,
