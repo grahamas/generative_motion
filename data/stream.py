@@ -47,7 +47,7 @@ class Stream(object):
             try:
                 self.i_unit += 1 # Probably bad idea, since StopIteration could be sent,
                                  # but i_unit would continue incrementing.
-                return reduce(lambda x,f: f(x), self.on_load, self.source.next())
+                return reduce(lambda x,f: f(x) if x is not None else None, self.on_load, self.source.next())
             except StopIteration:
                 return None
         else:

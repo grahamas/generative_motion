@@ -29,7 +29,7 @@ class TestStream(unittest.TestCase):
         self.assertEqual(self.simple_list[1], simple_stream.next()) 
         self.assertEqual(self.simple_list[2], chain_stream.next())
 
-    def test_batch(self):
+    def test_batch_basics(self):
         BATCH_SIZE = 2
         simple_stream = Stream(iter(self.simple_list))
         simple_batch_stream = simple_stream.batch(BATCH_SIZE)
@@ -59,10 +59,32 @@ class TestStream(unittest.TestCase):
         self.assertEqual(self.simple_list[1:], long_batch_stream.next())
         self.assertIsNone(long_batch_stream.next())
 
+    def test_map(self):
+        simple_stream = Stream(iter(self.simple_list))
+        map_fn = lambda x: x + 30
+        mapped_list = map(map_fn, self.simple_list)
+        mapped_stream = simple_stream.map([map_fn])
+        self.assertEqual(mapped_list[0], mapped_stream.next())
+        self.assertEqual(mapped_list[1:], mapped_stream.to_list())
+        # Check map ordering is correct
+        map_fns = [map_fn, lambda x: x / 2.0]
+        mapped01 = map(map_fns[1], map(map_fns[0], self.simple_list))
+        mapped10 = map(map_fns[0], map(map_fns[1], self.simple_list))
+        # Reset simple_stream
+        simple_stream = Stream(iter(self.simple_list))
+        mapped_stream01 = simple_stream.map(map_fns)
+        self.assertEqual(mapped01, mapped_stream01.to_list())
+        # Reset simple_stream
+        simple_stream = Stream(iter(self.simple_list))
+        mapped_stream10 = simple_stream.map(map_fns[::-1])
+        self.assertEqual(mapped10, mapped_stream10.to_list())
+
 
 
 class TestBatchStream(unittest.TestCase):
-
+    """
+        See "test_batch" functions above. Not sure this is necessary.
+    """
     def setUp(self):
         self.LIST_LEN = 20
         self.simple_list = range(self.LIST_LEN)
