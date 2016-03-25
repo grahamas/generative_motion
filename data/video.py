@@ -94,7 +94,8 @@ class VideoStream(stream.FileStream):
         super(VideoStream, self).__init__(file_path, max_len, skip_len, on_load)
         self.grayscale = grayscale
         # We open the file to get metadata
-        with self as source:
+        with self as stream:
+            source = stream.source
             # Get the number of movie frames and make sure it is 
             # commensurate with the requested n_frames and drop_frames
             total_n_frames = int(source.cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -120,7 +121,7 @@ class VideoStream(stream.FileStream):
             ret, frame = self.source.next()
             if frame is None:
                 raise StopIteration
-            processed = reduce(lambda x,f: f(x), self.on_load, frame)
+            processed = reduce(lambda x,f: f(x), self.on_load, frame) # Weird tuple thing
             return processed
         else:
             return None
@@ -160,7 +161,7 @@ class VideoStream(stream.FileStream):
                 else:
                     return None
         self.source = VideoSource(self.file_path)
-        return self.source
+        return self
     def __exit__(self, exc_type, exc_value, traceback):
         if exc_type is not None:
             print exc_type, exc_value, traceback
