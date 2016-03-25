@@ -44,7 +44,10 @@ class MotionTrace(object):
         self.flow_mat_varname = mat_varname
         self.output_path = output_path
         self.dt = dt
+        print("going to video")
         self.video_stream = VideoStream(video_path, grayscale=False)
+        print("out!")
+        self.fps = self.video_stream.fps
         self.circle_center = None
         self.circle_radius = None
         self.mouse_left_down = False
@@ -53,12 +56,6 @@ class MotionTrace(object):
         self.image = np.zeros((512, 512, 3), dtype=np.uint8)
         self.window_name = 'Flow Tracker'
         self.i_frame = -1
-
-    @classmethod
-    def from_glob(cls, mat_glob, mat_varname, video_path, output_path, dt):
-        mat_paths = sorted(glob.glob(mat_glob), key=zu.split_out_numbers)
-        return cls(mat_paths, mat_varname, video_path, output_path, dt)
-
         
     def draw_frame(self, frame):
         if self.circle_center is not None:
@@ -88,14 +85,19 @@ class MotionTrace(object):
 
     
     def start_motion_trace(self, video):
-        fps = video.fps
+        fps = self.fps
         frame_len = (1000.0 / fps)
         cv2.namedWindow(self.window_name)
         cv2.setMouseCallback(self.window_name, attach_callback(self))
+        print("for?")
+        print self.mat_paths
         for mat_path in self.mat_paths:
+            print("FOR!")
             data = np.array(h5py.File(mat_path, 'r').get(self.flow_mat_varname))
             # data[:,:,1,:] = data[:,:,1,:] * -1 # Makes vectors have 0,0 as upper left
+            print('next!')
             frame = np.squeeze(video.next())
+            print('after next...')
             self.i_frame += 1
             while not mouse_right:
                 if not draw_frame(frame, frame_len):
@@ -112,5 +114,11 @@ class MotionTrace(object):
             cv2.imshow(self.window_name, image)
 
 if __name__ == '__main__':
-    mt = MotionTrace.from_glob(FLOW_PATH_GLOB, FLOW_MAT_VARNAME, 
+    mat_paths = sorted(glob.glob(FLOW_PATH_GLOB), key=zu.split_out_numbers)
+    mt = MotionTrace(mat_paths, FLOW_MAT_VARNAME, 
             VIDEO_PATH, OUTPUT_DIR, DT)
+    print("with?")
+    with mt.video_stream as video:
+        print("with!")
+        mt.start_motion_trace(video)
+        print("yay!")
