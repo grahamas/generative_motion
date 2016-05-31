@@ -41,13 +41,14 @@ def attach_callback(obj):
         if event == cv2.EVENT_RBUTTONDOWN and not obj.playing:
             obj.mouse_right = True
         if event == cv2.EVENT_MOUSEMOVE and obj.mouse_left_down:
-            obj.circle_radius = max(1, int(dist(np.array([x,y]), obj.circle_center)))
+            obj.circle_radius = max(1, 
+                    int(dist(np.array([x,y]), obj.circle_center)))
     return mouse_callback
 
 class MotionTrace(object):
     # Assumes shape of matrix, easy fix
-    def __init__(self, mat_paths, mat_varname, video_path, output_path, output_prefix,
-            dt=1):
+    def __init__(self, mat_paths, mat_varname, video_path, 
+            output_path, output_prefix, dt=1):
         self.video_path = video_path
         self.mat_paths = mat_paths
         self.flow_mat_varname = mat_varname
@@ -71,8 +72,17 @@ class MotionTrace(object):
         local_frame = frame.copy()
         if self.circle_center is not None:
             print(str(self.circle_center) + ", " + str(self.circle_radius))
-            cv2.circle(local_frame, self.circle_center, self.circle_radius, (255, 0, 0), 2)
-        cv2.putText(local_frame, str(self.i_frame), (400, 460), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 255)
+            cv2.circle(local_frame, 
+                    self.circle_center, 
+                    self.circle_radius, 
+                    (255, 0, 0), 
+                    2)
+        cv2.putText(local_frame, 
+                str(self.i_frame), 
+                (400, 460), 
+                cv2.FONT_HERSHEY_SIMPLEX, 
+                0.5, 
+                255)
         if save:
             self.write_out(local_frame)
         cv2.imshow(self.window_name, local_frame)
@@ -88,8 +98,12 @@ class MotionTrace(object):
     def circle_resultant_vector(self, flow_frame):
         accum = np.array([0,0], dtype=np.float64)
         count = 0
-        for i in np.arange(max(0,self.circle_center[0]-self.circle_radius),min(512,self.circle_center[0]+self.circle_radius)):
-            for j in np.arange(max(0,self.circle_center[1]-self.circle_radius),min(512,self.circle_center[1]+self.circle_radius)):
+        for i in np.arange(
+                max(0,self.circle_center[0]-self.circle_radius),
+                min(512,self.circle_center[0]+self.circle_radius)):
+            for j in np.arange(
+                    max(0,self.circle_center[1]-self.circle_radius),
+                    min(512,self.circle_center[1]+self.circle_radius)):
                 if dist(np.array([i,j]), self.circle_center) <= self.circle_radius:
                     accum += np.squeeze(flow_frame[i,j,:])
                     count += 1
@@ -100,7 +114,8 @@ class MotionTrace(object):
     def move_circle(self, flow_frame):
         # Recall that (0,0) is in the upper left
         result = self.circle_resultant_vector(flow_frame)
-        new_center = map(lambda x: min(max(int(x),0),512), np.array(self.circle_center) + result * self.dt)
+        new_center = map(lambda x: min(max(int(x),0),512), 
+                np.array(self.circle_center) + result * self.dt)
         self.circle_center = tuple(new_center)
 
     
@@ -111,9 +126,13 @@ class MotionTrace(object):
         cv2.setMouseCallback(self.window_name, attach_callback(self))
         for mat_path in self.mat_paths:
             if save:
-                output_fn = os.path.join(self.output_path, '_'.join([self.output_prefix, datetime.datetime.now().strftime("%y%m%d_%H%M%S")])) + '.avi'
-                self.current_output = cv2.VideoWriter(filename=output_fn, frameSize=(512,512),
-                        fps=int(fps), fourcc=cv2.VideoWriter_fourcc(*'XVID'))
+                output_fn = os.path.join(self.output_path, 
+                        '_'.join([self.output_prefix, 
+                            datetime.datetime.now().strftime("%y%m%d_%H%M%S")])) + '.avi'
+                self.current_output = cv2.VideoWriter(filename=output_fn, 
+                        frameSize=(512,512),
+                        fps=int(fps), 
+                        fourcc=cv2.VideoWriter_fourcc(*'XVID'))
             data = np.array(h5py.File(mat_path, 'r').get(self.flow_mat_varname))
             data = data.swapaxes(1,3)
             data = data.swapaxes(1,2)
@@ -128,7 +147,8 @@ class MotionTrace(object):
                     self.stop_motion_trace()
                     return
             self.mouse_right = False
-            frame = video.next() # Should check for None, but should never be None
+            # Should check for frame == None, but should never be None
+            frame = video.next() 
             i_flow = 0
             gross_time_start = time.clock()
             self.playing = True
@@ -137,7 +157,9 @@ class MotionTrace(object):
                 if not self.mouse_left_down:
                     self.move_circle(data[i_flow,:,:,:])
                     if not blank:
-                        self.draw_frame(frame, 1, save) # TODO: Get appropriate framelen (based on computation time)
+                        # TODO: Get appropriate framelen 
+                        #       (based on computation time)
+                        self.draw_frame(frame, 1, save) 
                     else:
                         self.draw_frame(blank_frame, 1, save)
                     i_flow += 1
@@ -147,7 +169,9 @@ class MotionTrace(object):
                     self.draw_frame(frame, frame_len)
             self.playing = False
             gross_time = time.clock() - gross_time_start
-            cv2.putText(blank_frame, 'FPS: ' + str(gross_time / i_flow), (20, 256), cv2.FONT_HERSHEY_SIMPLEX, 1, 255)
+            cv2.putText(blank_frame, 
+                    'FPS: ' + str(gross_time / i_flow), 
+                    (20, 256), cv2.FONT_HERSHEY_SIMPLEX, 1, 255)
             cv2.imshow(self.window_name, blank_frame)
             if cv2.waitKey(0) & 0xFF == ord('q'):
                 self.stop_motion_trace()

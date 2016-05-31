@@ -84,7 +84,9 @@ def movie_average_spectrum(movie, n_fft=256, stride=128, hamming=None, fps=60):
     while n_filled == n_fft:
         for offset in offsets:
             if backwards:
-                snippet = np.hstack([double_snippet[n_fft+offset:], double_snippet[:offset]])
+                snippet = np.hstack(
+                        [double_snippet[n_fft+offset:],double_snippet[:offset]]
+                        )
             else:
                 snippet = double_snippet[offset:n_fft+offset]
             if window:
@@ -96,10 +98,14 @@ def movie_average_spectrum(movie, n_fft=256, stride=128, hamming=None, fps=60):
             count += 1
         backwards = not backwards
         if backwards:
-            n_filled = movie.fill_array(double_snippet[:n_fft], n_frames=n_fft, frame_processing=frame_processing)
+            n_filled = movie.fill_array(double_snippet[:n_fft], 
+                    n_frames=n_fft, 
+                    frame_processing=frame_processing)
         else:
             # Fill second half of double_snippet
-            n_filled = movie.fill_array(double_snippet[n_fft:], n_frames=n_fft, frame_processing=frame_processing)
+            n_filled = movie.fill_array(double_snippet[n_fft:], 
+                    n_frames=n_fft, 
+                    frame_processing=frame_processing)
     print count
     avg_psd /= count
     return (avg_psd, f)
