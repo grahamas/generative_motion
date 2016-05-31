@@ -64,4 +64,5 @@ target/
 *.json
 *.png
 *.swp
+*.swo
 *.avi
